@@ -167,7 +167,7 @@ public class StockService {
         }
     }
 
-    private void ensureStockOperationIsAllowed(Stock stock) {
+    public void ensureStockOperationIsAllowed(Stock stock) {
         if (!stock.getProduct().isActive()) {
             throw new DomainException(
                     ErrorCode.BUSINESS_RULE_VIOLATION,
