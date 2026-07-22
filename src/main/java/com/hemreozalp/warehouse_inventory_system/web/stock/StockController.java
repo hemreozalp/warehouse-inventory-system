@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -61,19 +62,28 @@ public class StockController {
 
     @PatchMapping("/stock-in")
     @PreAuthorize("hasRole('ADMIN')")
-    StockOperationResponse stockIn(@Valid @RequestBody StockChangeRequest request) {
-        return stockService.stockIn(request);
+    StockOperationResponse stockIn(
+            @Valid @RequestBody StockChangeRequest request,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        return stockService.stockIn(request, idempotencyKey);
     }
 
     @PatchMapping("/stock-out")
     @PreAuthorize("hasRole('ADMIN')")
-    StockOperationResponse stockOut(@Valid @RequestBody StockChangeRequest request) {
-        return stockService.stockOut(request);
+    StockOperationResponse stockOut(
+            @Valid @RequestBody StockChangeRequest request,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        return stockService.stockOut(request, idempotencyKey);
     }
 
     @PatchMapping("/adjust")
     @PreAuthorize("hasRole('ADMIN')")
-    StockOperationResponse adjust(@Valid @RequestBody StockAdjustmentRequest request) {
-        return stockService.adjust(request);
+    StockOperationResponse adjust(
+            @Valid @RequestBody StockAdjustmentRequest request,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        return stockService.adjust(request, idempotencyKey);
     }
 }

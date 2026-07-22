@@ -14,6 +14,8 @@ public record StockMovementResponse(
         int quantityBefore,
         int quantityAfter,
         String reason,
+        String idempotencyKey,
+        String createdBy,
         Instant createdAt
 ) {
 }

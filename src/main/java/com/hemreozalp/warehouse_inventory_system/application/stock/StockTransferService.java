@@ -49,6 +49,20 @@ public class StockTransferService {
 
     @Transactional
     public StockTransferResponse transfer(StockTransferRequest request) {
+        return transfer(request, null);
+    }
+
+    @Transactional
+    public StockTransferResponse transfer(StockTransferRequest request, String idempotencyKey) {
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+        if (normalizedIdempotencyKey != null) {
+            java.util.Optional<StockTransfer> existingTransfer =
+                    transferRepository.findByIdempotencyKey(normalizedIdempotencyKey);
+            if (existingTransfer.isPresent()) {
+                return transferMapper.toResponse(existingTransfer.get());
+            }
+        }
+
         Stock sourceStock = stockService.findStock(request.sourceStockId());
         Warehouse targetWarehouse = warehouseService.findWarehouse(request.targetWarehouseId());
 
@@ -86,7 +100,12 @@ public class StockTransferService {
                 targetStock.getQuantity(),
                 reason));
 
-        StockTransfer transfer = new StockTransfer(sourceStock, targetStock, request.quantity(), reason);
+        StockTransfer transfer = new StockTransfer(
+                sourceStock,
+                targetStock,
+                request.quantity(),
+                reason,
+                normalizedIdempotencyKey);
         transfer.attachMovements(sourceMovement, targetMovement);
 
         return transferMapper.toResponse(transferRepository.save(transfer));
@@ -132,5 +151,19 @@ public class StockTransferService {
 
     private String normalizeOptional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeIdempotencyKey(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.length() > 120) {
+            throw new DomainException(
+                    ErrorCode.VALIDATION_FAILED,
+                    HttpStatus.BAD_REQUEST,
+                    "Idempotency-Key header cannot exceed 120 characters.");
+        }
+        return normalized;
     }
 }

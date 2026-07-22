@@ -16,6 +16,8 @@ public record StockTransferResponse(
         StockMovementResponse sourceMovement,
         StockMovementResponse targetMovement,
         String reason,
+        String idempotencyKey,
+        String createdBy,
         Instant createdAt
 ) {
 }

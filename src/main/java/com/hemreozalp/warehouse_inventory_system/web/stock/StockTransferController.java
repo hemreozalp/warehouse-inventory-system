@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -28,8 +29,11 @@ public class StockTransferController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    StockTransferResponse transfer(@Valid @RequestBody StockTransferRequest request) {
-        return transferService.transfer(request);
+    StockTransferResponse transfer(
+            @Valid @RequestBody StockTransferRequest request,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        return transferService.transfer(request, idempotencyKey);
     }
 
     @GetMapping("/{id}")

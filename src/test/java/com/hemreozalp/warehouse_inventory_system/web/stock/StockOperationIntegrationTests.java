@@ -80,6 +80,36 @@ class StockOperationIntegrationTests {
     }
 
     @Test
+    @WithMockUser(username = "admin@example.com", roles = "ADMIN")
+    void stockOperationWithSameIdempotencyKeyIsAppliedOnlyOnce() throws Exception {
+        String stockId = createStockFixture("IDM-" + shortId());
+        String idempotencyKey = "stock-in-" + shortId();
+
+        MvcResult firstResult = stockIn(stockId, 5, "receive once", idempotencyKey)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stock.quantity").value(5))
+                .andExpect(jsonPath("$.movement.idempotencyKey").value(idempotencyKey))
+                .andExpect(jsonPath("$.movement.createdBy").value("admin@example.com"))
+                .andReturn();
+        String movementId = extractJsonString(firstResult, "movement", "id");
+
+        stockIn(stockId, 5, "receive once", idempotencyKey)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stock.quantity").value(5))
+                .andExpect(jsonPath("$.movement.id").value(movementId));
+
+        mockMvc.perform(get("/api/v1/stocks/" + stockId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(5));
+
+        mockMvc.perform(get("/api/v1/stock-movements")
+                        .param("stockId", stockId)
+                        .param("type", "STOCK_IN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)));
+    }
+
+    @Test
     @WithMockUser(roles = "ADMIN")
     void adjustmentSetsQuantityAndRecordsChangedAmount() throws Exception {
         String stockId = createStockFixture("ADJ-" + shortId());
@@ -119,6 +149,15 @@ class StockOperationIntegrationTests {
         return stockChange("/api/v1/stocks/stock-in", stockId, quantity, reason);
     }
 
+    private org.springframework.test.web.servlet.ResultActions stockIn(
+            String stockId,
+            int quantity,
+            String reason,
+            String idempotencyKey
+    ) throws Exception {
+        return stockChange("/api/v1/stocks/stock-in", stockId, quantity, reason, idempotencyKey);
+    }
+
     private org.springframework.test.web.servlet.ResultActions stockOut(
             String stockId,
             int quantity,
@@ -142,6 +181,27 @@ class StockOperationIntegrationTests {
                 """.formatted(stockId, quantity, reason);
 
         return mockMvc.perform(patch(endpoint)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions stockChange(
+            String endpoint,
+            String stockId,
+            int quantity,
+            String reason,
+            String idempotencyKey
+    ) throws Exception {
+        String body = """
+                {
+                  "stockId": "%s",
+                  "quantity": %d,
+                  "reason": "%s"
+                }
+                """.formatted(stockId, quantity, reason);
+
+        return mockMvc.perform(patch(endpoint)
+                .header("Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
     }
@@ -229,6 +289,17 @@ class StockOperationIntegrationTests {
         Matcher matcher = Pattern.compile("\\\"" + field + "\\\":\\\"([^\\\"]+)\\\"").matcher(body);
         if (!matcher.find()) {
             throw new IllegalStateException("Field was not found in JSON response: " + field);
+        }
+        return matcher.group(1);
+    }
+
+    private String extractJsonString(MvcResult result, String objectField, String field) throws Exception {
+        String body = result.getResponse().getContentAsString();
+        Matcher matcher = Pattern.compile(
+                "\\\"" + objectField + "\\\":\\{.*?\\\"" + field + "\\\":\\\"([^\\\"]+)\\\"")
+                .matcher(body);
+        if (!matcher.find()) {
+            throw new IllegalStateException("Field was not found in JSON response: " + objectField + "." + field);
         }
         return matcher.group(1);
     }

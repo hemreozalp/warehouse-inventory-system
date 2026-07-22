@@ -3,6 +3,7 @@ package com.hemreozalp.warehouse_inventory_system.domain.stock;
 import com.hemreozalp.warehouse_inventory_system.domain.catalog.Product;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -13,8 +14,11 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Table(name = "stock_transfers")
 public class StockTransfer {
 
@@ -59,13 +63,24 @@ public class StockTransfer {
     @Column(length = 500)
     private String reason;
 
+    @Column(name = "idempotency_key", length = 120)
+    private String idempotencyKey;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    @CreatedBy
+    @Column(name = "created_by")
+    private String createdBy;
 
     protected StockTransfer() {
     }
 
     public StockTransfer(Stock sourceStock, Stock targetStock, int quantity, String reason) {
+        this(sourceStock, targetStock, quantity, reason, null);
+    }
+
+    public StockTransfer(Stock sourceStock, Stock targetStock, int quantity, String reason, String idempotencyKey) {
         this.id = UUID.randomUUID();
         this.product = sourceStock.getProduct();
         this.sourceStock = sourceStock;
@@ -75,6 +90,7 @@ public class StockTransfer {
         this.quantity = quantity;
         this.status = StockTransferStatus.COMPLETED;
         this.reason = reason;
+        this.idempotencyKey = idempotencyKey;
     }
 
     @PrePersist
@@ -131,7 +147,15 @@ public class StockTransfer {
         return reason;
     }
 
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
     }
 }

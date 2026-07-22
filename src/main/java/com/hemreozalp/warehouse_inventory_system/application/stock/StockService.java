@@ -90,15 +90,43 @@ public class StockService {
 
     @Transactional
     public StockOperationResponse stockIn(StockChangeRequest request) {
+        return stockIn(request, null);
+    }
+
+    @Transactional
+    public StockOperationResponse stockIn(StockChangeRequest request, String idempotencyKey) {
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+        StockOperationResponse existingOperation = findExistingOperation(normalizedIdempotencyKey);
+        if (existingOperation != null) {
+            return existingOperation;
+        }
+
         Stock stock = findStock(request.stockId());
         ensureStockOperationIsAllowed(stock);
 
         int before = stock.increase(request.quantity());
-        return saveOperation(stock, StockMovementType.STOCK_IN, request.quantity(), before, normalizeOptional(request.reason()));
+        return saveOperation(
+                stock,
+                StockMovementType.STOCK_IN,
+                request.quantity(),
+                before,
+                normalizeOptional(request.reason()),
+                normalizedIdempotencyKey);
     }
 
     @Transactional
     public StockOperationResponse stockOut(StockChangeRequest request) {
+        return stockOut(request, null);
+    }
+
+    @Transactional
+    public StockOperationResponse stockOut(StockChangeRequest request, String idempotencyKey) {
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+        StockOperationResponse existingOperation = findExistingOperation(normalizedIdempotencyKey);
+        if (existingOperation != null) {
+            return existingOperation;
+        }
+
         Stock stock = findStock(request.stockId());
         ensureStockOperationIsAllowed(stock);
 
@@ -112,11 +140,28 @@ public class StockService {
                     "Stock out quantity cannot exceed available stock.");
         }
 
-        return saveOperation(stock, StockMovementType.STOCK_OUT, request.quantity(), before, normalizeOptional(request.reason()));
+        return saveOperation(
+                stock,
+                StockMovementType.STOCK_OUT,
+                request.quantity(),
+                before,
+                normalizeOptional(request.reason()),
+                normalizedIdempotencyKey);
     }
 
     @Transactional
     public StockOperationResponse adjust(StockAdjustmentRequest request) {
+        return adjust(request, null);
+    }
+
+    @Transactional
+    public StockOperationResponse adjust(StockAdjustmentRequest request, String idempotencyKey) {
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+        StockOperationResponse existingOperation = findExistingOperation(normalizedIdempotencyKey);
+        if (existingOperation != null) {
+            return existingOperation;
+        }
+
         Stock stock = findStock(request.stockId());
         ensureStockOperationIsAllowed(stock);
 
@@ -129,7 +174,13 @@ public class StockService {
                     "Adjustment quantity must change current stock.");
         }
 
-        return saveOperation(stock, StockMovementType.ADJUSTMENT, changedQuantity, before, normalizeOptional(request.reason()));
+        return saveOperation(
+                stock,
+                StockMovementType.ADJUSTMENT,
+                changedQuantity,
+                before,
+                normalizeOptional(request.reason()),
+                normalizedIdempotencyKey);
     }
 
     public Stock findStock(UUID id) {
@@ -187,7 +238,8 @@ public class StockService {
             StockMovementType type,
             int quantity,
             int quantityBefore,
-            String reason
+            String reason,
+            String idempotencyKey
     ) {
         StockMovement movement = new StockMovement(
                 stock,
@@ -195,15 +247,43 @@ public class StockService {
                 quantity,
                 quantityBefore,
                 stock.getQuantity(),
-                reason);
+                reason,
+                idempotencyKey);
 
         StockMovement savedMovement = movementRepository.save(movement);
-        StockResponse stockResponse = stockMapper.toResponse(stock);
-        StockMovementResponse movementResponse = movementMapper.toResponse(savedMovement);
+        return toOperationResponse(savedMovement);
+    }
+
+    private StockOperationResponse findExistingOperation(String idempotencyKey) {
+        if (idempotencyKey == null) {
+            return null;
+        }
+        return movementRepository.findByIdempotencyKey(idempotencyKey)
+                .map(this::toOperationResponse)
+                .orElse(null);
+    }
+
+    private StockOperationResponse toOperationResponse(StockMovement movement) {
+        StockResponse stockResponse = stockMapper.toResponse(movement.getStock());
+        StockMovementResponse movementResponse = movementMapper.toResponse(movement);
         return new StockOperationResponse(stockResponse, movementResponse);
     }
 
     private String normalizeOptional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeIdempotencyKey(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.length() > 120) {
+            throw new DomainException(
+                    ErrorCode.VALIDATION_FAILED,
+                    HttpStatus.BAD_REQUEST,
+                    "Idempotency-Key header cannot exceed 120 characters.");
+        }
+        return normalized;
     }
 }

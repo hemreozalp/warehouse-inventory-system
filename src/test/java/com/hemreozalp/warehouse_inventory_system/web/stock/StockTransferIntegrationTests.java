@@ -98,6 +98,47 @@ class StockTransferIntegrationTests {
     }
 
     @Test
+    @WithMockUser(username = "admin@example.com", roles = "ADMIN")
+    void transferWithSameIdempotencyKeyIsAppliedOnlyOnce() throws Exception {
+        String suffix = shortId();
+        String categoryId = createCategory("Idempotent Transfer Category " + suffix);
+        String productId = createProduct("IDT-" + suffix, categoryId);
+        String sourceWarehouseId = createWarehouse("IDT-SRC-" + suffix, true);
+        String targetWarehouseId = createWarehouse("IDT-TGT-" + suffix, true);
+        String sourceStockId = createStock(productId, sourceWarehouseId);
+        String idempotencyKey = "transfer-" + shortId();
+        stockIn(sourceStockId, 10);
+
+        MvcResult firstResult = transfer(sourceStockId, targetWarehouseId, 4, "move once", idempotencyKey)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sourceStock.quantity").value(6))
+                .andExpect(jsonPath("$.targetStock.quantity").value(4))
+                .andExpect(jsonPath("$.idempotencyKey").value(idempotencyKey))
+                .andExpect(jsonPath("$.createdBy").value("admin@example.com"))
+                .andReturn();
+        String transferId = extractJsonString(firstResult, "id");
+        String targetStockId = extractJsonString(firstResult, "targetStock", "id");
+
+        transfer(sourceStockId, targetWarehouseId, 4, "move once", idempotencyKey)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(transferId))
+                .andExpect(jsonPath("$.sourceStock.quantity").value(6))
+                .andExpect(jsonPath("$.targetStock.quantity").value(4));
+
+        mockMvc.perform(get("/api/v1/stocks/" + sourceStockId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(6));
+        mockMvc.perform(get("/api/v1/stocks/" + targetStockId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(4));
+        mockMvc.perform(get("/api/v1/stock-transfers")
+                        .param("sourceWarehouseId", sourceWarehouseId)
+                        .param("targetWarehouseId", targetWarehouseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)));
+    }
+
+    @Test
     @WithMockUser(roles = "ADMIN")
     void insufficientTransferDoesNotCreateTargetStockOrMovements() throws Exception {
         String suffix = shortId();
@@ -152,6 +193,28 @@ class StockTransferIntegrationTests {
                 """.formatted(sourceStockId, targetWarehouseId, quantity, reason);
 
         return mockMvc.perform(post("/api/v1/stock-transfers")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions transfer(
+            String sourceStockId,
+            String targetWarehouseId,
+            int quantity,
+            String reason,
+            String idempotencyKey
+    ) throws Exception {
+        String body = """
+                {
+                  "sourceStockId": "%s",
+                  "targetWarehouseId": "%s",
+                  "quantity": %d,
+                  "reason": "%s"
+                }
+                """.formatted(sourceStockId, targetWarehouseId, quantity, reason);
+
+        return mockMvc.perform(post("/api/v1/stock-transfers")
+                .header("Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
     }
