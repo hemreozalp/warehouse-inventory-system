@@ -1,4 +1,28 @@
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: warehouse-inventory-app
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/warehouse_inventory
+      DB_USERNAME: warehouse_user
+      DB_PASSWORD: warehouse_password
+      JWT_SECRET: change-this-secret-before-production-use
+      JWT_EXPIRATION_MINUTES: 60
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   postgres:
     image: postgres:17-alpine
     container_name: warehouse-inventory-postgres

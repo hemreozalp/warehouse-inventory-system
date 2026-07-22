@@ -6,6 +6,7 @@ import com.hemreozalp.warehouse_inventory_system.common.error.FieldViolation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -28,6 +29,22 @@ public class GlobalExceptionHandler {
                 status.getReasonPhrase(),
                 exception.getErrorCode().name(),
                 exception.getMessage(),
+                request.getRequestURI()
+        ));
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    ResponseEntity<ApiErrorResponse> handleOptimisticLockingFailure(
+            OptimisticLockingFailureException exception,
+            HttpServletRequest request
+    ) {
+        HttpStatus status = HttpStatus.CONFLICT;
+
+        return ResponseEntity.status(status).body(ApiErrorResponse.of(
+                status.value(),
+                status.getReasonPhrase(),
+                ErrorCode.CONCURRENT_MODIFICATION.name(),
+                "Stock was changed by another transaction. Please reload and try again.",
                 request.getRequestURI()
         ));
     }
