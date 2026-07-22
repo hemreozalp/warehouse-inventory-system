@@ -9,4 +9,6 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID> {
     boolean existsByCodeIgnoreCase(String code);
 
     boolean existsByCodeIgnoreCaseAndIdNot(String code, UUID id);
+
+    long countByActiveTrue();
 }
