@@ -122,7 +122,7 @@ public class ProductService {
         productRepository.delete(product);
     }
 
-    private Product findProduct(UUID id) {
+    public Product findProduct(UUID id) {
         return productRepository.findById(id)
                 .orElseThrow(() -> new DomainException(
                         ErrorCode.RESOURCE_NOT_FOUND,
