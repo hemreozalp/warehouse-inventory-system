@@ -5,10 +5,17 @@ import com.hemreozalp.warehouse_inventory_system.common.error.ErrorCode;
 import com.hemreozalp.warehouse_inventory_system.common.exception.DomainException;
 import com.hemreozalp.warehouse_inventory_system.domain.catalog.Product;
 import com.hemreozalp.warehouse_inventory_system.domain.stock.Stock;
+import com.hemreozalp.warehouse_inventory_system.domain.stock.StockMovement;
+import com.hemreozalp.warehouse_inventory_system.domain.stock.StockMovementType;
 import com.hemreozalp.warehouse_inventory_system.domain.stock.Warehouse;
+import com.hemreozalp.warehouse_inventory_system.infrastructure.persistence.stock.StockMovementRepository;
 import com.hemreozalp.warehouse_inventory_system.infrastructure.persistence.stock.StockRepository;
 import com.hemreozalp.warehouse_inventory_system.infrastructure.persistence.stock.StockSpecifications;
 import com.hemreozalp.warehouse_inventory_system.web.stock.CreateStockRequest;
+import com.hemreozalp.warehouse_inventory_system.web.stock.StockAdjustmentRequest;
+import com.hemreozalp.warehouse_inventory_system.web.stock.StockChangeRequest;
+import com.hemreozalp.warehouse_inventory_system.web.stock.StockMovementResponse;
+import com.hemreozalp.warehouse_inventory_system.web.stock.StockOperationResponse;
 import com.hemreozalp.warehouse_inventory_system.web.stock.StockResponse;
 import com.hemreozalp.warehouse_inventory_system.web.stock.StockSearchRequest;
 import java.util.UUID;
@@ -26,17 +33,23 @@ public class StockService {
     private final ProductService productService;
     private final WarehouseService warehouseService;
     private final StockMapper stockMapper;
+    private final StockMovementRepository movementRepository;
+    private final StockMovementMapper movementMapper;
 
     public StockService(
             StockRepository stockRepository,
             ProductService productService,
             WarehouseService warehouseService,
-            StockMapper stockMapper
+            StockMapper stockMapper,
+            StockMovementRepository movementRepository,
+            StockMovementMapper movementMapper
     ) {
         this.stockRepository = stockRepository;
         this.productService = productService;
         this.warehouseService = warehouseService;
         this.stockMapper = stockMapper;
+        this.movementRepository = movementRepository;
+        this.movementMapper = movementMapper;
     }
 
     @Transactional
@@ -75,6 +88,50 @@ public class StockService {
         return stockRepository.findAll(specification, pageable).map(stockMapper::toResponse);
     }
 
+    @Transactional
+    public StockOperationResponse stockIn(StockChangeRequest request) {
+        Stock stock = findStock(request.stockId());
+        ensureStockOperationIsAllowed(stock);
+
+        int before = stock.increase(request.quantity());
+        return saveOperation(stock, StockMovementType.STOCK_IN, request.quantity(), before, normalizeOptional(request.reason()));
+    }
+
+    @Transactional
+    public StockOperationResponse stockOut(StockChangeRequest request) {
+        Stock stock = findStock(request.stockId());
+        ensureStockOperationIsAllowed(stock);
+
+        int before;
+        try {
+            before = stock.decrease(request.quantity());
+        } catch (IllegalArgumentException exception) {
+            throw new DomainException(
+                    ErrorCode.BUSINESS_RULE_VIOLATION,
+                    HttpStatus.CONFLICT,
+                    "Stock out quantity cannot exceed available stock.");
+        }
+
+        return saveOperation(stock, StockMovementType.STOCK_OUT, request.quantity(), before, normalizeOptional(request.reason()));
+    }
+
+    @Transactional
+    public StockOperationResponse adjust(StockAdjustmentRequest request) {
+        Stock stock = findStock(request.stockId());
+        ensureStockOperationIsAllowed(stock);
+
+        int before = stock.adjustTo(request.quantity());
+        int changedQuantity = Math.abs(request.quantity() - before);
+        if (changedQuantity == 0) {
+            throw new DomainException(
+                    ErrorCode.BUSINESS_RULE_VIOLATION,
+                    HttpStatus.CONFLICT,
+                    "Adjustment quantity must change current stock.");
+        }
+
+        return saveOperation(stock, StockMovementType.ADJUSTMENT, changedQuantity, before, normalizeOptional(request.reason()));
+    }
+
     public Stock findStock(UUID id) {
         return stockRepository.findById(id)
                 .orElseThrow(() -> new DomainException(
@@ -108,5 +165,45 @@ public class StockService {
                     HttpStatus.CONFLICT,
                     "Stock cannot be created for an inactive warehouse.");
         }
+    }
+
+    private void ensureStockOperationIsAllowed(Stock stock) {
+        if (!stock.getProduct().isActive()) {
+            throw new DomainException(
+                    ErrorCode.BUSINESS_RULE_VIOLATION,
+                    HttpStatus.CONFLICT,
+                    "Stock operation cannot be performed for an inactive product.");
+        }
+        if (!stock.getWarehouse().isActive()) {
+            throw new DomainException(
+                    ErrorCode.BUSINESS_RULE_VIOLATION,
+                    HttpStatus.CONFLICT,
+                    "Stock operation cannot be performed for an inactive warehouse.");
+        }
+    }
+
+    private StockOperationResponse saveOperation(
+            Stock stock,
+            StockMovementType type,
+            int quantity,
+            int quantityBefore,
+            String reason
+    ) {
+        StockMovement movement = new StockMovement(
+                stock,
+                type,
+                quantity,
+                quantityBefore,
+                stock.getQuantity(),
+                reason);
+
+        StockMovement savedMovement = movementRepository.save(movement);
+        StockResponse stockResponse = stockMapper.toResponse(stock);
+        StockMovementResponse movementResponse = movementMapper.toResponse(savedMovement);
+        return new StockOperationResponse(stockResponse, movementResponse);
+    }
+
+    private String normalizeOptional(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

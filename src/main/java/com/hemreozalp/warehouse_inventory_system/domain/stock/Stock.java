@@ -91,4 +91,38 @@ public class Stock {
     public Instant getUpdatedAt() {
         return updatedAt;
     }
+
+    public int increase(int amount) {
+        validatePositiveAmount(amount);
+        int before = quantity;
+        this.quantity += amount;
+        return before;
+    }
+
+    public int decrease(int amount) {
+        validatePositiveAmount(amount);
+        if (amount > quantity) {
+            throw new IllegalArgumentException("Stock quantity cannot become negative.");
+        }
+
+        int before = quantity;
+        this.quantity -= amount;
+        return before;
+    }
+
+    public int adjustTo(int newQuantity) {
+        if (newQuantity < 0) {
+            throw new IllegalArgumentException("Stock quantity cannot be negative.");
+        }
+
+        int before = quantity;
+        this.quantity = newQuantity;
+        return before;
+    }
+
+    private void validatePositiveAmount(int amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("Stock quantity change must be positive.");
+        }
+    }
 }

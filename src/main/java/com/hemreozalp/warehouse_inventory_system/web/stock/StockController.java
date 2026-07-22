@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -56,5 +57,23 @@ public class StockController {
             Pageable pageable
     ) {
         return stockService.search(new StockSearchRequest(productId, warehouseId), pageable);
+    }
+
+    @PatchMapping("/stock-in")
+    @PreAuthorize("hasRole('ADMIN')")
+    StockOperationResponse stockIn(@Valid @RequestBody StockChangeRequest request) {
+        return stockService.stockIn(request);
+    }
+
+    @PatchMapping("/stock-out")
+    @PreAuthorize("hasRole('ADMIN')")
+    StockOperationResponse stockOut(@Valid @RequestBody StockChangeRequest request) {
+        return stockService.stockOut(request);
+    }
+
+    @PatchMapping("/adjust")
+    @PreAuthorize("hasRole('ADMIN')")
+    StockOperationResponse adjust(@Valid @RequestBody StockAdjustmentRequest request) {
+        return stockService.adjust(request);
     }
 }
