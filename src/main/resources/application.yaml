@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: warehouse-inventory-system
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/warehouse_inventory}
+    username: ${DB_USERNAME:warehouse_user}
+    password: ${DB_PASSWORD:warehouse_password}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  api:
+    title: Warehouse Inventory Management System API
+    version: 0.0.1
+    description: API for managing warehouses, inventory, stock movements, and transfers.
