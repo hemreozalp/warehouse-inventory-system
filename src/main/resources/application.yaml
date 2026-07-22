@@ -34,3 +34,7 @@ app:
     title: Warehouse Inventory Management System API
     version: 0.0.1
     description: API for managing warehouses, inventory, stock movements, and transfers.
+  security:
+    jwt:
+      secret: ${JWT_SECRET:super-duper-very-secret-bit}
+      expiration-minutes: ${JWT_EXPIRATION_MINUTES:60}
